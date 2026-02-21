@@ -6,34 +6,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Coordinate estimate for KM 18 Via al Mar/Dagua, Cali
-# You can change these using .env variables
-KM18_LAT = os.getenv("WEATHER_LAT", "3.513")
-KM18_LON = os.getenv("WEATHER_LON", "-76.608")
-
-# Headers for RapidAPI
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "your_rapidapi_key_here")
+# Using Meteostat API (Requires API Key via Frontend)
 RAPIDAPI_HOST = "meteostat.p.rapidapi.com"
-HEADERS = {"x-rapidapi-key": RAPIDAPI_KEY, "x-rapidapi-host": RAPIDAPI_HOST}
 
 
-async def get_external_weather():
+async def get_external_weather(lat: str, lon: str, api_key: str):
     """
-    Fetches weather data for KM 18.
+    Fetches weather data using given coordinates and API key.
     Strategy:
     1. Find the nearest station using /stations/nearby.
     2. Query /stations/daily for that specific station ID.
     This is more robust than /point/daily for rural locations.
     """
+
+    headers = {"x-rapidapi-key": api_key, "x-rapidapi-host": RAPIDAPI_HOST}
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             # 1. Find Nearest Station
-            print(f"Finding nearest station for {KM18_LAT}, {KM18_LON}...")
+            print(f"Finding nearest station for {lat}, {lon}...")
             url_nearby = "https://meteostat.p.rapidapi.com/stations/nearby"
-            params_nearby = {"lat": KM18_LAT, "lon": KM18_LON, "limit": "1"}
+            params_nearby = {"lat": lat, "lon": lon, "limit": "1"}
 
             resp_nearby = await client.get(
-                url_nearby, headers=HEADERS, params=params_nearby
+                url_nearby, headers=headers, params=params_nearby
             )
             if resp_nearby.status_code != 200:
                 print(f"Error fetching nearby stations: {resp_nearby.status_code}")
@@ -61,7 +57,7 @@ async def get_external_weather():
                 f"Fetching daily data for station {station_id} ({start_date} to {end_date})..."
             )
             resp_daily = await client.get(
-                url_daily, headers=HEADERS, params=params_daily
+                url_daily, headers=headers, params=params_daily
             )
 
             if resp_daily.status_code == 200:
@@ -76,7 +72,7 @@ async def get_external_weather():
                     print("Trying hourly data as fallback...")
                     url_hourly = "https://meteostat.p.rapidapi.com/stations/hourly"
                     resp_hourly = await client.get(
-                        url_hourly, headers=HEADERS, params=params_daily
+                        url_hourly, headers=headers, params=params_daily
                     )
                     if resp_hourly.status_code == 200:
                         hourly_data = resp_hourly.json().get("data", [])

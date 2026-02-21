@@ -31,9 +31,16 @@ export const getLatestSensorData = async (): Promise<SensorData | null> => {
     return response.data;
 };
 
-export const getExternalWeather = async (): Promise<WeatherData[] | null> => {
+export const postSensorData = async (data: Omit<SensorData, 'id'>): Promise<SensorData> => {
+    const response = await axios.post(`${API_URL}/data/`, data);
+    return response.data;
+};
+
+export const getExternalWeather = async (lat: string, lon: string, apiKey: string): Promise<WeatherData[] | null> => {
     try {
-        const response = await axios.get(`${API_URL}/weather`);
+        const response = await axios.get(`${API_URL}/weather`, {
+            params: { lat, lon, api_key: apiKey }
+        });
         return response.data;
     } catch (error) {
         console.error("Error fetching weather:", error);

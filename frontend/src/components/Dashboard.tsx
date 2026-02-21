@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSensorData, getLatestSensorData, getExternalWeather } from '../api';
+import { getSensorData, getLatestSensorData, getExternalWeather, postSensorData } from '../api';
 import type { SensorData, WeatherData } from '../api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format } from 'date-fns';
@@ -13,6 +13,13 @@ const Dashboard: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [anomalies, setAnomalies] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
+    const [isSimulating, setIsSimulating] = useState<boolean>(false);
+    const [loadingWeather, setLoadingWeather] = useState<boolean>(false);
+
+    const [showWeatherConfig, setShowWeatherConfig] = useState<boolean>(false);
+    const [weatherLat, setWeatherLat] = useState<string>('3.513');
+    const [weatherLon, setWeatherLon] = useState<string>('-76.608');
+    const [weatherApiKey, setWeatherApiKey] = useState<string>('');
 
     const checkAnomalies = (sensorDisplay: SensorData) => {
         const issues: string[] = [];
@@ -36,21 +43,30 @@ const Dashboard: React.FC = () => {
         setAnomalies(issues);
     };
 
-    const fetchWeather = async () => {
+    const handleFetchWeather = async () => {
+        if (!weatherApiKey) {
+            alert("Debes ingresar tu API Key de Meteostat (RapidAPI)");
+            return;
+        }
         try {
+            setLoadingWeather(true);
             console.log("Fetching weather...");
-            const wData = await getExternalWeather();
+            const wData = await getExternalWeather(weatherLat, weatherLon, weatherApiKey);
             console.log("Weather data received:", wData);
 
             if (wData && wData.length > 0) {
-                // Get the last item (most recent day available)
                 const lastDay = wData[wData.length - 1];
                 setWeather(lastDay);
+                setShowWeatherConfig(false);
             } else {
                 console.warn("No weather data available or empty array.");
+                alert("No se encontraron datos del clima.");
             }
         } catch (e) {
             console.error("Failed to fetch weather:", e);
+            alert("Error al cargar el clima. Verifica tu clave o coordenadas.");
+        } finally {
+            setLoadingWeather(false);
         }
     }
 
@@ -79,10 +95,32 @@ const Dashboard: React.FC = () => {
 
     useEffect(() => {
         fetchData();
-        fetchWeather();
         const interval = setInterval(fetchData, 2000);
         return () => clearInterval(interval);
     }, []);
+
+    // Simulation Effect
+    useEffect(() => {
+        let simInterval: ReturnType<typeof setInterval>;
+        if (isSimulating) {
+            simInterval = setInterval(async () => {
+                const fakeData = {
+                    fecha: new Date().toISOString(),
+                    temperatura: 18 + Math.random() * 10, // 18 - 28
+                    humedad: 40 + Math.random() * 30,     // 40 - 70
+                    ph: 5.5 + Math.random() * 2           // 5.5 - 7.5
+                };
+                try {
+                    await postSensorData(fakeData);
+                } catch (e) {
+                    console.error("Simulation error", e);
+                }
+            }, 3000);
+        }
+        return () => {
+            if (simInterval) clearInterval(simInterval);
+        };
+    }, [isSimulating]);
 
     if (loading && !latest) return <div className="card">Cargando monitor de vermicompost...</div>;
 
@@ -103,6 +141,71 @@ const Dashboard: React.FC = () => {
                     <span>{issue}</span>
                 </div>
             ))}
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                <button
+                    onClick={() => setIsSimulating(!isSimulating)}
+                    style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: isSimulating ? '#ff6b6b' : '#69db7c',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    {isSimulating ? 'Detener Simulación DB' : 'Iniciar Simulación de DB'}
+                </button>
+
+                <button
+                    onClick={() => setShowWeatherConfig(!showWeatherConfig)}
+                    style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#4dabf7',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <CloudSun size={18} />
+                    Configurar Clima Exterior
+                </button>
+            </div>
+
+            {showWeatherConfig && (
+                <div className="card" style={{ marginBottom: '1.5rem', backgroundColor: '#2b2b2b' }}>
+                    <h3 style={{ marginTop: 0 }}>Configurar API Clima (Meteostat)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem', color: '#aaa' }}>Latitud</label>
+                            <input type="text" value={weatherLat} onChange={e => setWeatherLat(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff' }} />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem', color: '#aaa' }}>Longitud</label>
+                            <input type="text" value={weatherLon} onChange={e => setWeatherLon(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff' }} />
+                        </div>
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem', color: '#aaa' }}>RapidAPI Key</label>
+                        <input type="password" value={weatherApiKey} onChange={e => setWeatherApiKey(e.target.value)} placeholder="Ingresa tu clave de RapidAPI" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#1a1a1a', color: '#fff', marginBottom: '15px' }} />
+                    </div>
+                    <button
+                        onClick={handleFetchWeather}
+                        disabled={loadingWeather}
+                        style={{ padding: '8px 16px', borderRadius: '4px', border: 'none', backgroundColor: '#4dabf7', color: '#fff', fontWeight: 'bold', cursor: loadingWeather ? 'wait' : 'pointer' }}>
+                        {loadingWeather ? 'Consultando...' : 'Obtener Clima'}
+                    </button>
+                </div>
+            )}
 
             <div className="grid-container">
                 <div className="card">
@@ -128,19 +231,18 @@ const Dashboard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Weather Widget Force Render Check */}
-            <div className="card weather-card-bg" style={{ marginBottom: '1rem', marginTop: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
-                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.1rem', color: '#f1f1f1' }}>
-                        <CloudSun color="#f1c40f" size={24} />
-                        Clima Exterior (KM 18)
-                    </h3>
-                    <span style={{ fontSize: '0.9rem', color: '#aaa' }}>
-                        {weather ? format(new Date(weather.date), 'dd/MM/yyyy') : 'Cargando...'}
-                    </span>
-                </div>
+            {weather && (
+                <div className="card weather-card-bg" style={{ marginBottom: '1rem', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.1rem', color: '#f1f1f1' }}>
+                            <CloudSun color="#f1c40f" size={24} />
+                            Clima Exterior (Coordenadas: {weatherLat}, {weatherLon})
+                        </h3>
+                        <span style={{ fontSize: '0.9rem', color: '#aaa' }}>
+                            {format(new Date(weather.date), 'dd/MM/yyyy')}
+                        </span>
+                    </div>
 
-                {weather ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
                         <div>
                             <span style={{ display: 'block', color: '#aaa', fontSize: '0.8rem', marginBottom: '4px' }}>Promedio</span>
@@ -161,12 +263,8 @@ const Dashboard: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                ) : (
-                    <div style={{ textAlign: 'center', color: '#aaa', padding: '10px' }}>
-                        Obteniendo datos del clima...
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
 
             <div className="card" style={{ height: '400px' }}>
                 <h3 style={{ marginBottom: '1rem', textAlign: 'left' }}>Histórico en Tiempo Real (Gráfica)</h3>
